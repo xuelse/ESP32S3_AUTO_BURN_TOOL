@@ -1,0 +1,1 @@
+pyinstaller -w -F .\esp32_flasher.py
