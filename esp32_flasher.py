@@ -5,7 +5,8 @@ import threading
 import time
 import json
 import os
-
+import locale
+font_size = 12
 # 添加自定义样式和主题
 def set_modern_style(root):
     # 创建自定义样式
@@ -21,27 +22,27 @@ def set_modern_style(root):
             pass  # 如果没有可用的主题，使用默认主题
     
     # 自定义按钮样式
-    style.configure('TButton', font=('Microsoft YaHei UI', 9))
-    style.configure('Accent.TButton', font=('Microsoft YaHei UI', 9))
+    style.configure('TButton', font=('Microsoft YaHei UI', font_size))
+    style.configure('Accent.TButton', font=('Microsoft YaHei UI', font_size))
     
     # 自定义标签框样式
-    style.configure('TLabelframe', font=('Microsoft YaHei UI', 9))
-    style.configure('TLabelframe.Label', font=('Microsoft YaHei UI', 9, 'bold'))
+    style.configure('TLabelframe', font=('Microsoft YaHei UI', font_size))
+    style.configure('TLabelframe.Label', font=('Microsoft YaHei UI', font_size, 'bold'))
     
     # 自定义标签样式
-    style.configure('TLabel', font=('Microsoft YaHei UI', 9))
+    style.configure('TLabel', font=('Microsoft YaHei UI', font_size))
     
     # 自定义输入框样式
-    style.configure('TEntry', font=('Microsoft YaHei UI', 9))
+    style.configure('TEntry', font=('Microsoft YaHei UI', font_size))
     
     # 自定义下拉框样式
-    style.configure('TCombobox', font=('Microsoft YaHei UI', 9))
+    style.configure('TCombobox', font=('Microsoft YaHei UI', font_size))
     
     # 自定义复选框样式
-    style.configure('TCheckbutton', font=('Microsoft YaHei UI', 9))
+    style.configure('TCheckbutton', font=('Microsoft YaHei UI', font_size))
     
     # 设置窗口默认字体
-    root.option_add('*Font', ('Microsoft YaHei UI', 9))
+    root.option_add('*Font', ('Microsoft YaHei UI', font_size))
     
     # 设置窗口DPI感知
     try:
@@ -88,9 +89,9 @@ class LogWindow:
         # 使用自定义字体和颜色
         self.log_text = tk.Text(
             self.window, 
-            height=10, 
+            height=font_size, 
             yscrollcommand=scrollbar.set,
-            font=('Consolas', 10),
+            font=('Consolas', font_size),
             background='#f9f9f9',
             foreground='#333333',
             borderwidth=1,
@@ -295,6 +296,15 @@ class ESP32Flasher:
             path_var = tk.StringVar()
             entry = ttk.Entry(frame, textvariable=path_var, width=50)
             entry.pack(side="left", padx=5)
+            
+            # 修复显示尾部的方法
+            def scroll_to_end(var, entry=None):
+                if entry:
+                    self.root.after(10, lambda: entry.xview_moveto(1.0))
+            
+            # 绑定变量变化事件
+            path_var.trace_add("write", lambda name, index, mode, e=entry: scroll_to_end(None, e))
+            
             self.firmware_paths.append(path_var)
             self.firmware_entries.append(entry)
             
@@ -367,9 +377,9 @@ class ESP32Flasher:
         # 创建文本框并关联滚动条，使用更现代的样式
         self.log_text = tk.Text(
             self.log_frame, 
-            height=12,  # 增加高度
+            height=font_size,  # 增加高度
             yscrollcommand=scrollbar.set,
-            font=('Consolas', 10),  # 使用等宽字体
+            font=('Consolas', font_size),  # 使用等宽字体
             background='#f9f9f9',  # 浅灰色背景
             foreground='#333333',  # 深灰色文字
             borderwidth=1,
@@ -411,6 +421,7 @@ class ESP32Flasher:
                             if i < len(self.firmware_paths):
                                 if os.path.exists(path):
                                     self.firmware_paths[i].set(path)
+                                    self.root.after(100, lambda idx=i: self.firmware_entries[idx].xview_moveto(1.0))
                                 else:
                                     self.firmware_paths[i].set('')
                     # 加载固件地址
@@ -456,6 +467,8 @@ class ESP32Flasher:
         )
         if filename:
             self.firmware_paths[index].set(filename)
+            # 使用延迟确保在文本更新后滚动到尾部
+            self.root.after(50, lambda: self.firmware_entries[index].xview_moveto(1.0))
             self.save_config()
 
     def start_flash(self):
@@ -600,9 +613,25 @@ class ESP32Flasher:
                 
                 log_window.log(f"执行命令: {' '.join(flash_cmd)}")
                 
-                # 使用子进程执行烧录，避免输出重定向冲突
-                process = subprocess.Popen(flash_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                    startupinfo=startupinfo)
+                # 使用子进程执行烧录，确保正确处理中文路径
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                
+                # 获取系统默认编码
+                system_encoding = locale.getpreferredencoding()
+                log_window.log(f"系统编码: {system_encoding}")
+                
+                # 使用shell=True来处理中文路径问题
+                cmd_str = " ".join(flash_cmd)
+                process = subprocess.Popen(
+                    cmd_str, 
+                    stdout=subprocess.PIPE, 
+                    stderr=subprocess.STDOUT, 
+                    text=True,
+                    startupinfo=startupinfo,
+                    shell=True
+                )
+                
                 for line in process.stdout:
                     log_window.log(line.strip())
                 process.wait()
